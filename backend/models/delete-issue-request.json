@@ -1,0 +1,12 @@
+{
+    "$schema": "http://json-schema.org/draft-04/schema#",
+    "title": "delete-issue",
+    "type": "object",
+    "properties": {
+      "issueId": {
+        "type": "string"
+      }
+    },
+    "required": ["issueId"],
+    "additionalProperties": false
+  }

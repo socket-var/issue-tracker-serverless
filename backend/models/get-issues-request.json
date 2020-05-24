@@ -1,0 +1,13 @@
+{
+    "$schema": "http://json-schema.org/draft-04/schema#",
+    "title": "get-issues",
+    "type": "object",
+    "properties": {
+      "userType": {
+        "type": "string",
+        "enum": ["reporter", "assignee"]
+      }
+    },
+    "required": ["userType"],
+    "additionalProperties": false
+  }

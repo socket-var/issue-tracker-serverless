@@ -1,0 +1,1 @@
+export type IssueStatus = 'TO DO' | 'IN PROGRESS' | 'IN REVIEW' | 'CLOSED' | 'RESOLVED'
