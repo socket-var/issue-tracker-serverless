@@ -1,0 +1,284 @@
+service:
+  name: issue-tracker
+
+plugins:
+  - serverless-webpack
+  - serverless-iam-roles-per-function
+  - serverless-reqvalidator-plugin
+  - serverless-aws-documentation
+  - serverless-plugin-tracing
+# package:
+#   individually: true
+
+provider:
+  name: aws
+  runtime: nodejs12.x
+
+  stage: ${opt:stage, 'dev'}
+  region: ${opt:region, 'us-east-1'}
+
+  tracing:
+    lambda: true
+    apiGateway: true
+
+  environment:
+    ISSUES_TABLE: Issues-${self:provider.stage}
+    REPORTER_ID_INDEX: ReporterIdIndex
+    ASSIGNEE_ID_INDEX: AssigneeIdIndex
+    ATTACHMENTS_S3_BUCKET: serverless-issues-attachments-${self:provider.stage}
+    SIGNED_URL_EXPIRATION: 300
+
+  iamManagedPolicies:
+    - "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
+  iamRoleStatements:
+    - Effect: Allow
+      Action:
+        - codedeploy:*
+      Resource:
+        - "*"
+    - Effect: "Allow"
+      Action:
+        - "xray:PutTraceSegments"
+        - "xray:PutTelemetryRecords"
+      Resource:
+        - "*"
+
+custom:
+  documentation:
+    api:
+      info:
+        version: v1.0.0
+        title: Issue Tracker Serverless API
+        description: Issue Tracker Serverless API
+    models:
+      - name: CreateIssue
+        contentType: application/json
+        schema: ${file(models/create-issue-request.json)}
+      - name: UpdateIssue
+        contentType: application/json
+        schema: ${file(models/update-issue-request.json)}
+      - name: DeleteIssue
+        contentType: application/json
+        schema: ${file(models/delete-issue-request.json)}
+      - name: GetIssues
+        contentType: application/json
+        schema: ${file(models/get-issues-request.json)}
+
+functions:
+  Auth:
+    handler: src/lambda/auth/auth0Authorizer.handler
+
+  GetAllIssues:
+    handler: src/lambda/http/getAllIssues.handler
+    events:
+      - http:
+          method: get
+          path: issues
+          authorizer: Auth
+          cors: true
+    iamRoleStatements:
+      - Effect: Allow
+        Action:
+          - dynamodb:Query
+        Resource: arn:aws:dynamodb:${self:provider.region}:*:table/${self:provider.environment.ISSUES_TABLE}/index/${self:provider.environment.REPORTER_ID_INDEX}
+      - Effect: Allow
+        Action:
+          - dynamodb:Query
+        Resource: arn:aws:dynamodb:${self:provider.region}:*:table/${self:provider.environment.ISSUES_TABLE}/index/${self:provider.environment.ASSIGNEE_ID_INDEX}
+
+  GetIssuesByFilter:
+    handler: src/lambda/http/getIssuesByFilter.handler
+    events:
+      - http:
+          method: post
+          path: issues
+          authorizer: Auth
+          cors: true
+          reqValidatorName: RequestBodyValidator
+          documentation:
+            summary: Get all issues
+            description: Get all issues by requestor or assignee
+            requestModels:
+              "application/json": GetIssues
+    iamRoleStatements:
+      - Effect: Allow
+        Action:
+          - dynamodb:Query
+        Resource: arn:aws:dynamodb:${self:provider.region}:*:table/${self:provider.environment.ISSUES_TABLE}/index/${self:provider.environment.REPORTER_ID_INDEX}
+      - Effect: Allow
+        Action:
+          - dynamodb:Query
+        Resource: arn:aws:dynamodb:${self:provider.region}:*:table/${self:provider.environment.ISSUES_TABLE}/index/${self:provider.environment.ASSIGNEE_ID_INDEX}
+
+  CreateIssue:
+    handler: src/lambda/http/createIssue.handler
+    events:
+      - http:
+          method: post
+          path: issues/new
+          authorizer: Auth
+          cors: true
+          reqValidatorName: RequestBodyValidator
+          documentation:
+            summary: Create a new issue
+            description: Create a new issue
+            requestModels:
+              "application/json": CreateIssue
+    iamRoleStatements:
+      - Effect: Allow
+        Action:
+          - dynamodb:PutItem
+        Resource: arn:aws:dynamodb:${self:provider.region}:*:table/${self:provider.environment.ISSUES_TABLE}
+
+  UpdateIssue:
+    handler: src/lambda/http/updateIssue.handler
+    events:
+      - http:
+          method: patch
+          path: issues/{issueId}
+          authorizer: Auth
+          cors: true
+          reqValidatorName: RequestBodyValidator
+          documentation:
+            summary: Update an existing issue
+            description: Update an existing issue
+            requestModels:
+              "application/json": UpdateIssue
+    iamRoleStatements:
+      - Effect: Allow
+        Action:
+          - dynamodb:Query
+          - dynamodb:GetItem
+          - dynamodb:UpdateItem
+          - dynamodb:PutItem
+        Resource: arn:aws:dynamodb:${self:provider.region}:*:table/${self:provider.environment.ISSUES_TABLE}
+
+  deleteIssue:
+    handler: src/lambda/http/deleteIssue.handler
+    events:
+      - http:
+          method: delete
+          path: issues/{issueId}
+          authorizer: Auth
+          cors: true
+    iamRoleStatements:
+      - Effect: Allow
+        Action:
+          - dynamodb:Query
+          - dynamodb:DeleteItem
+        Resource: arn:aws:dynamodb:${self:provider.region}:*:table/${self:provider.environment.ISSUES_TABLE}
+
+  GenerateUploadUrl:
+    handler: src/lambda/http/generateUploadUrl.handler
+    events:
+      - http:
+          method: post
+          path: issues/{issueId}/attachment
+          authorizer: Auth
+          cors: true
+    iamRoleStatements:
+      - Effect: Allow
+        Action:
+          - s3:PutObject
+          - s3:GetObject
+        Resource: arn:aws:s3:::${self:provider.environment.ATTACHMENTS_S3_BUCKET}/*
+      - Effect: Allow
+        Action:
+          - dynamodb:Query
+          - dynamodb:GetItem
+          - dynamodb:UpdateItem
+          - dynamodb:PutItem
+        Resource: arn:aws:dynamodb:${self:provider.region}:*:table/${self:provider.environment.ISSUES_TABLE}
+
+resources:
+  Resources:
+    GatewayResponseDefault4XX:
+      Type: AWS::ApiGateway::GatewayResponse
+      Properties:
+        ResponseParameters:
+          gatewayresponse.header.Access-Control-Allow-Origin: "'*'"
+          gatewayresponse.header.Access-Control-Allow-Headers: "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token'"
+          gatewayresponse.header.Access-Control-Allow-Methods: "'GET,OPTIONS,POST,PATCH,DELETE'"
+        ResponseType: DEFAULT_4XX
+        RestApiId:
+          Ref: ApiGatewayRestApi
+
+    RequestBodyValidator:
+      Type: AWS::ApiGateway::RequestValidator
+      Properties:
+        Name: "request-body-validator"
+        RestApiId:
+          Ref: ApiGatewayRestApi
+        ValidateRequestBody: true
+        ValidateRequestParameters: false
+
+    # DynamoDB config
+    IssuesDynamoDBTable:
+      Type: AWS::DynamoDB::Table
+      Properties:
+        AttributeDefinitions:
+          - AttributeName: issueId
+            AttributeType: S
+          - AttributeName: reporterId
+            AttributeType: S
+          - AttributeName: assigneeId
+            AttributeType: S
+          - AttributeName: createdAt
+            AttributeType: S
+        KeySchema:
+          - AttributeName: issueId
+            KeyType: HASH
+          - AttributeName: createdAt
+            KeyType: RANGE
+        GlobalSecondaryIndexes:
+          - IndexName: ${self:provider.environment.REPORTER_ID_INDEX}
+            KeySchema:
+              - AttributeName: reporterId
+                KeyType: HASH
+              - AttributeName: createdAt
+                KeyType: RANGE
+            Projection:
+              ProjectionType: ALL
+          - IndexName: ${self:provider.environment.ASSIGNEE_ID_INDEX}
+            KeySchema:
+              - AttributeName: assigneeId
+                KeyType: HASH
+              - AttributeName: createdAt
+                KeyType: RANGE
+            Projection:
+              ProjectionType: ALL
+        BillingMode: PAY_PER_REQUEST
+        TableName: ${self:provider.environment.ISSUES_TABLE}
+
+    # S3 Config
+    AttachmentsBucket:
+      Type: AWS::S3::Bucket
+      Properties:
+        BucketName: ${self:provider.environment.ATTACHMENTS_S3_BUCKET}
+        CorsConfiguration:
+          CorsRules:
+            - AllowedOrigins:
+                - "*"
+              AllowedHeaders:
+                - "*"
+              AllowedMethods:
+                - GET
+                - PUT
+                - POST
+                - DELETE
+                - HEAD
+              MaxAge: 3000
+
+    BucketPolicy:
+      Type: AWS::S3::BucketPolicy
+      Properties:
+        PolicyDocument:
+          Id: MyPolicy
+          Version: "2012-10-17"
+          Statement:
+            - Sid: PublicReadForGetBucketObjects
+              Effect: Allow
+              Principal: "*"
+              Action: "s3:GetObject"
+              Resource: "arn:aws:s3:::${self:provider.environment.ATTACHMENTS_S3_BUCKET}/*"
+        Bucket: !Ref AttachmentsBucket
