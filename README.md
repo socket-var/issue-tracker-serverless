@@ -7,7 +7,7 @@ Source code: https://github.com/socket-var/issue-tracker-serverless
 # Functionality of the application
 
 - This application will allow creating/removing/updating/fetching Issue items. Each Issue item can optionally have an attachment image.
-- For the sake of this project every user can view all issues, sort of like every user in a particular team in JIRA can view all the tickets
+- Every user can view all the issues they are involved with either as a reporter or as an assignee
 - Users can filter issues by "Assigned to me" and "Reported by me"
 - Any user can update the issue's title, description, status and add attachments
 - Only users who reported the issue can delete it
