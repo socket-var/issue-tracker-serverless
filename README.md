@@ -1,6 +1,7 @@
 # Issue tracker - Serverless
 
 This is a very basic JIRA style issue tracker implemented using the serverless framework
+
 Source code: https://github.com/socket-var/issue-tracker-serverless
 
 # Functionality of the application
