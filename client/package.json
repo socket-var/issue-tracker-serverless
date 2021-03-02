@@ -24,7 +24,7 @@
     "@types/react-router-dom": "^4.3.4",
     "@types/styled-components": "^4.1.18",
     "@types/uuid": "^8.0.0",
-    "auth0-js": "^9.11.1",
+    "auth0-js": "^9.13.2",
     "typescript": "3.9.3"
   },
   "scripts": {
